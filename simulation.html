@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Monte Carlo Simulation</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.4.4/math.min.js"></script>
+
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+
+    <style>
+        .label-column {
+            width: 25%;
+            /* Set the width of the label column */
+        }
+
+        .value-column {
+            width: 25%;
+            /* Set the width of the value column */
+        }
+
+        table {
+            width: 50%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            margin-top: 20px;
+        }
+
+        td {
+            padding: 5px;
+            border: 1px solid #070707;
+            /*  border */
+        }
+    </style>
+
+
+</head>
+
+<body>
+    <h1>Monte Carlo monteCarloSimulation</h1>
+
+    <!-- Inputs -->
+    <label>S (Stock Price): <input type="number" id="s" step="any" value="10"></label><br>
+    <label>X (Strike Price): <input type="number" id="x" step="any" value="10"></label><br>
+    <label>T (Time to Maturity): <input type="number" id="t" step="any" value="1"></label><br>
+    <label>R (Risk-Free Rate): <input type="number" id="r" step="any" value="0.05"></label><br>
+    <label>Div (Dividend Yield): <input type="number" id="div" step="any" value="0"></label><br>
+    <label>Vol (Volatility): <input type="number" id="vol" step="any" value="0.5"></label><br>
+    <label>Itr (Iterations): <input type="number" id="itr" step="any" value="10"></label><br>
+
+    <!-- <button onclick="calculateCallOption()">Calculate Black Scholes Call Option</button> -->
+    <!-- <p>Black Scholes Result: <span id="bsResult"></span></p> -->
+
+    <p><span id="blank"></span></p>
+    <button onclick="monteCarloSimulation()">Run Monte Carlo Simulation</button>
+    <button onclick="exportPathsToCsv()">Export to CSV</button>
+    <br>
+    <br>
+    <label><input type="radio" name="pathView" value="all" checked> View all paths</label><br>
+    <label><input type="radio" name="pathView" value="each"> View each path</label>
+    <br>
+    <br>
+    <button id="prevPath" onclick="changePath(-1)" disabled>&lt;</button>
+    <button id="nextPath" onclick="changePath(1)" disabled>&gt;</button>
+    <span id="pathIndicator"></span>
+
+    <p><span id="blank"></span></p>
+    <canvas id="mcCanvas" width="600" height="400"></canvas>
+
+
+    <table>
+        <tr>
+            <td class="label-column">Expected Stock Price:</td>
+            <td class="value-column"><span id="expEnd"></span></td>
+        </tr>
+        <tr>
+            <td class="label-column">Average Ending Stock Price:</td>
+            <td class="value-column"><span id="avgEnd"></span></td>
+        </tr>
+        <tr>
+            <td class="label-column">Difference:</td>
+            <td class="value-column"><span id="diff"></span></td>
+        </tr>
+        <tr>
+            <td class="label-column">Difference (%):</td>
+            <td class="value-column"><span id="diffPct"></span></td>
+        </tr>
+    </table>
+
+    <script>
+
+        // Global variables
+        var paths = []; // Global variable to hold the paths
+        var currentPathIndex = 0;
+        var displayMode = 'all'; // can be 'all' or 'each'
+
+
+        // Function to calculate the Black Scholes Call Option
+        function calculateCallOption() {
+            // Get input values from the form
+            var s = parseFloat(document.getElementById('s').value);
+            var x = parseFloat(document.getElementById('x').value);
+            var t = parseFloat(document.getElementById('t').value);
+            var r = parseFloat(document.getElementById('r').value);
+            var div = parseFloat(document.getElementById('div').value);
+            var vol = parseFloat(document.getElementById('vol').value);
+
+            // Calculate d1 and d2
+            var d1 = (Math.log(s / x) + (r - div + vol * vol / 2) * t) / (vol * Math.sqrt(t));
+            var d2 = d1 - vol * Math.sqrt(t);
+
+            // Calculate the call option price
+            var callOptionPrice = s * Math.exp(-div * t) * normalCDF(d1) - x * Math.exp(-r * t) * normalCDF(d2);
+
+            // Display the result
+            document.getElementById('result').innerText = callOptionPrice.toFixed(2);
+        }
+
+
+        // Function to calculate the Cumulative Normal Distribution Function
+        function normalCDF(x) {
+            var p = 0.2316419;
+            var b1 = 0.319381530;
+            var b2 = -0.356563782;
+            var b3 = 1.781477937;
+            var b4 = -1.821255978;
+            var b5 = 1.330274429;
+
+            var t = 1 / (1 + p * Math.abs(x));
+            var sigma = 1 - 1 / Math.sqrt(2 * Math.PI) * Math.exp(-0.5 * x * x) *
+                (b1 * t + b2 * Math.pow(t, 2) + b3 * Math.pow(t, 3) + b4 * Math.pow(t, 4) + b5 * Math.pow(t, 5));
+
+            return x < 0 ? 1 - sigma : sigma;
+        }
+
+
+        // Monte Carlo Simulation function
+        function monteCarloSimulation() {
+            paths = []; // Clear the paths array
+            var s = parseFloat(document.getElementById('s').value);
+            var t = parseFloat(document.getElementById('t').value);
+            var r = parseFloat(document.getElementById('r').value);
+            var div = parseFloat(document.getElementById('div').value);
+            var vol = parseFloat(document.getElementById('vol').value);
+            var iterations = parseInt(document.getElementById('itr').value);
+
+            var timeSteps = t * 252; // As t is in years
+            var sumFinalPrices = 0; // Sum of the final prices for average calculation
+
+            for (var i = 0; i < iterations; i++) {
+                var path = [s];
+                for (var step = 1; step <= timeSteps; step++) {
+                    var dt = 1 / 252;
+                    var drift = (r - div - 0.5 * vol * vol) * dt;
+                    var diffusion = vol * Math.sqrt(dt) * randomNormal();
+                    path.push(path[step - 1] * Math.exp(drift + diffusion));
+                }
+                paths.push(path);
+                sumFinalPrices += path[path.length - 1]; // Add final price of this path to sum
+            }
+
+            // Calculate expected stock price
+            var expectedPrice = s * Math.exp(r * t);
+            document.getElementById('expEnd').innerText = expectedPrice.toFixed(2);
+
+            // Calculate average ending stock price
+            var avgEndingPrice = sumFinalPrices / iterations;
+            document.getElementById('avgEnd').innerText = avgEndingPrice.toFixed(2);
+
+            // Calculate difference and percent difference
+            var difference = avgEndingPrice - expectedPrice;
+            var percentDifference = (difference / expectedPrice) * 100;
+
+            document.getElementById('diff').innerText = difference.toFixed(2);
+            document.getElementById('diffPct').innerText = percentDifference.toFixed(2) + '%';
+
+            plotPaths(paths);
+
+        }
+
+        // function monteCarloSimulation() {
+        //     paths = []; // Clear the paths array
+        //     var s = parseFloat(document.getElementById('s').value);
+        //     var t = parseFloat(document.getElementById('t').value);
+        //     var r = parseFloat(document.getElementById('r').value);
+        //     var div = parseFloat(document.getElementById('div').value);
+        //     var vol = parseFloat(document.getElementById('vol').value);
+        //     var iterations = parseInt(document.getElementById('itr').value);
+        //     var timeSteps = t * 252; // Assuming 252 trading days in a year
+
+        //     var paths = math.zeros(iterations, timeSteps + 1); // Matrix of zeros
+
+        //     // Set the initial stock price for all paths
+        //     paths = math.map(paths, function (value, index) {
+        //         if (index[1] === 0) {
+        //             return s;
+        //         }
+        //         return value;
+        //     });
+
+        //     // Iteratively update the paths
+        //     for (var step = 1; step <= timeSteps; step++) {
+        //         for (var pathIndex = 0; pathIndex < iterations; pathIndex++) {
+        //             var dt = 1 / 252;
+        //             var drift = (r - div - 0.5 * vol * vol) * dt;
+        //             var diffusion = vol * Math.sqrt(dt) * randomNormal();
+        //             var previousPrice = paths.get([pathIndex, step - 1]);
+        //             var newPrice = previousPrice * Math.exp(drift + diffusion);
+        //             paths.set([pathIndex, step], newPrice);
+        //         }
+        //     }
+
+        //     // Convert paths matrix to array for plotting
+        //     var pathsArray = paths.toArray();
+        //     plotPaths(pathsArray);
+        // }
+
+
+        // Function to generate random normal values (using Box-Muller transform)
+        function randomNormal() {
+            var u = 1 - Math.random(); // Subtraction to avoid taking log of zero
+            var v = 1 - Math.random();
+            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        }
+
+
+        // Function to plot the simulated paths using Chart.js
+        function plotPaths(paths) {
+
+            // Destroy the previous chart if it exists
+            if (window.myLineChart) {
+                window.myLineChart.destroy();
+            }
+
+            var labels = Array.from({ length: paths[0].length }, (_, i) => i);
+            var datasets = paths.slice(0, 20).map((path, index) => ({
+                label: 'Simulation ' + (index + 1),
+                data: path,
+                borderColor: getRandomColor(),
+                fill: false,
+            }));
+
+            var ctx = document.getElementById('mcCanvas').getContext('2d');
+            window.myLineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: false, // Prevent dynamic resizing
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+        }
+
+
+        // Helper function to generate random colors
+        function getRandomColor() {
+            var letters = '0123456789ABCDEF';
+            var color = '#';
+            for (var i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+
+        // Function to update the chart display mode
+        function updateDisplayMode(mode) {
+            displayMode = mode;
+            currentPathIndex = 0; // Reset to the first path
+            updatePathIndicator(); // Update the path indicator text
+
+            if (mode === 'all') {
+                document.getElementById('prevPath').disabled = true;
+                document.getElementById('nextPath').disabled = true;
+                plotPaths(paths);
+            } else {
+                document.getElementById('prevPath').disabled = currentPathIndex === 0;
+                document.getElementById('nextPath').disabled = currentPathIndex === paths.length - 1;
+                plotPath(paths[currentPathIndex]);
+            }
+        }
+
+
+        // Function to export the simulated paths to a CSV file
+        function exportPathsToCsv() {
+            // Call your simulation function or ensure that the `paths` variable is populated
+            // monteCarloSimulation(); // Optional if paths are already populated
+            exportToCsv('simulated_paths.csv', paths);
+        }
+
+
+        // Function to export an array of arrays to a CSV file
+        function exportToCsv(filename, rows) {
+            // Convert array of paths to a CSV string
+            const csvContent = rows.map(e => e.join(",")).join("\n");
+
+            // Create a Blob with the CSV content
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            // Create a link element
+            const link = document.createElement('a');
+            if (link.download !== undefined) { // feature detection for download attribute
+                // Create a URL for the blob
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+
+                // Append the link to the document and trigger the download
+                document.body.appendChild(link);
+                link.click();
+
+                // Clean up by removing the link and revoking the object URL
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+        }
+
+
+        // Event listeners for radio buttons
+        document.querySelectorAll('input[name="pathView"]').forEach(radio => {
+            radio.addEventListener('change', function () {
+                updateDisplayMode(this.value);
+            });
+        });
+
+
+        // Function to change the current path being displayed
+        function changePath(direction) {
+            if (displayMode === 'each') {
+                currentPathIndex += direction;
+                updatePathIndicator(); // Update the path indicator text
+                if (currentPathIndex < 0) {
+                    currentPathIndex = 0;
+                } else if (currentPathIndex >= paths.length) {
+                    currentPathIndex = paths.length - 1;
+                }
+                document.getElementById('prevPath').disabled = currentPathIndex === 0;
+                document.getElementById('nextPath').disabled = currentPathIndex === paths.length - 1;
+                plotPath(paths[currentPathIndex]);
+            }
+        }
+
+
+        // Helper function to update the path indicator text
+        function updatePathIndicator() {
+            // If we're viewing each path individually, show the current path index
+            if (displayMode === 'each') {
+                document.getElementById('pathIndicator').innerText = (currentPathIndex + 1) + ' / ' + paths.length;
+            } else {
+                document.getElementById('pathIndicator').innerText = ''; // Clear the text when not viewing individual paths
+            }
+        }
+
+
+        // Function to plot a single path
+        function plotPath(path) {
+            var labels = Array.from({ length: path.length }, (_, i) => i);
+            var dataset = {
+                label: 'Simulation ' + (currentPathIndex + 1),
+                data: path,
+                borderColor: getRandomColor(),
+                fill: false,
+            };
+
+            if (window.myLineChart) {
+                window.myLineChart.destroy();
+            }
+
+            var ctx = document.getElementById('mcCanvas').getContext('2d');
+            window.myLineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [dataset]
+                },
+                options: {
+                    responsive: false, // Prevent dynamic resizing
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+
+</body>
+
+</html>
