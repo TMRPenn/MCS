@@ -5,6 +5,7 @@
     <title>Monte Carlo Simulation</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.4.4/math.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.0.2"></script>
 
     <style>
         canvas {
@@ -45,7 +46,7 @@
 
     <!-- Inputs -->
     <label>S (Stock Price): <input type="number" id="s" step="any" value="10"></label><br>
-    <label>X (Strike Price): <input type="number" id="x" step="any" value="10"></label><br>
+    <label>X (Strike Price): <input type="number" id="x" step="any" value="12"></label><br>
     <label>T (Time to Maturity): <input type="number" id="t" step="any" value="1"></label><br>
     <label>R (Risk-Free Rate): <input type="number" id="r" step="any" value="0.05"></label><br>
     <label>Div (Dividend Yield): <input type="number" id="div" step="any" value="0"></label><br>
@@ -97,7 +98,8 @@
         var paths = []; // Global variable to hold the paths
         var currentPathIndex = 0;
         var displayMode = 'all'; // can be 'all' or 'each'
-
+        var strikePrice = 0; 
+        var strikePriceData = 0;
 
         // Function to calculate the Black Scholes Call Option
         function calculateCallOption() {
@@ -182,44 +184,6 @@
 
         }
 
-        // function monteCarloSimulation() {
-        //     paths = []; // Clear the paths array
-        //     var s = parseFloat(document.getElementById('s').value);
-        //     var t = parseFloat(document.getElementById('t').value);
-        //     var r = parseFloat(document.getElementById('r').value);
-        //     var div = parseFloat(document.getElementById('div').value);
-        //     var vol = parseFloat(document.getElementById('vol').value);
-        //     var iterations = parseInt(document.getElementById('itr').value);
-        //     var timeSteps = t * 252; // Assuming 252 trading days in a year
-
-        //     var paths = math.zeros(iterations, timeSteps + 1); // Matrix of zeros
-
-        //     // Set the initial stock price for all paths
-        //     paths = math.map(paths, function (value, index) {
-        //         if (index[1] === 0) {
-        //             return s;
-        //         }
-        //         return value;
-        //     });
-
-        //     // Iteratively update the paths
-        //     for (var step = 1; step <= timeSteps; step++) {
-        //         for (var pathIndex = 0; pathIndex < iterations; pathIndex++) {
-        //             var dt = 1 / 252;
-        //             var drift = (r - div - 0.5 * vol * vol) * dt;
-        //             var diffusion = vol * Math.sqrt(dt) * randomNormal();
-        //             var previousPrice = paths.get([pathIndex, step - 1]);
-        //             var newPrice = previousPrice * Math.exp(drift + diffusion);
-        //             paths.set([pathIndex, step], newPrice);
-        //         }
-        //     }
-
-        //     // Convert paths matrix to array for plotting
-        //     var pathsArray = paths.toArray();
-        //     plotPaths(pathsArray);
-        // }
-
-
         // Function to generate random normal values (using Box-Muller transform)
         function randomNormal() {
             var u = 1 - Math.random(); // Subtraction to avoid taking log of zero
@@ -234,7 +198,7 @@
             // Destroy the previous chart if it exists
             if (window.myLineChart) {
                 window.myLineChart.destroy();
-            }
+            }            
 
             var labels = Array.from({ length: paths[0].length }, (_, i) => i);
             var datasets = paths.slice(0, 20).map((path, index) => ({
@@ -242,32 +206,51 @@
                 data: path,
                 borderColor: getRandomColor(),
                 fill: false,
+                pointRadius: 0 // Hide the points
             }));
 
+            strikePrice = parseFloat(document.getElementById('x').value);
+            
             var ctx = document.getElementById('mcCanvas').getContext('2d');
             window.myLineChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: datasets
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: false, // Prevent dynamic resizing
+            plugins: {
+                legend: {
+                    display: false
                 },
-                options: {
-                    responsive: false, // Prevent dynamic resizing
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: false
+                annotation: { // Add this annotation configuration
+                    annotations: {
+                        line1: { // Name of the annotation
+                            type: 'line',
+                            yMin: strikePrice,
+                            yMax: strikePrice,
+                            borderColor: 'red',
+                            borderWidth: 2,
+                            borderDash: [5, 5], // You can adjust this for the dash length and spacing
+                            z: 2, // Ensures that the annotation is in front
+                            label: {
+                                enabled: false,
+                                content: 'Strike Price'
+                            }
                         }
                     }
                 }
-            });
+            },
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
         }
-
-
+    });
+}
+ 
         // Helper function to generate random colors
         function getRandomColor() {
             var letters = '0123456789ABCDEF';
